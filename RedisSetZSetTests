@@ -1,0 +1,62 @@
+package com.boot.demo;
+
+import com.google.gson.Gson;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.BoundSetOperations;
+import org.springframework.data.redis.core.BoundZSetOperations;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.test.context.junit4.SpringRunner;
+
+import java.util.concurrent.TimeUnit;
+
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class RedisSetZSetTests {
+
+    @Autowired
+    RedisTemplate redisTemplate;
+
+
+    // 英语（diff不同的）（store商店，存储）（intersect横切横断）（union融合联合）（expire到期）（members成员）
+    @Test
+    public void setAndzset() {
+        redisTemplate.delete("setKey");
+        BoundSetOperations<String, String> bsoset = redisTemplate.boundSetOps("setKey");
+        bsoset.add("a","b","c","c","d","d","d");
+        System.out.println("现有：members：："+new Gson().toJson(bsoset.members()));
+        System.out.println("diff----- "+new Gson().toJson( bsoset.diff("a")));
+        System.out.println("现有：：members："+new Gson().toJson(bsoset.members()));
+        bsoset.diffAndStore("d","c");
+        System.out.println("diffAndStore(\"d\",\"c\") 后，现有：：："+new Gson().toJson(bsoset.members()));
+        System.out.println("横断：：：intersect===="+new Gson().toJson(bsoset.intersect("a")));
+        System.out.println("弹出------：pop：："+bsoset.pop());
+        System.out.println("members现有：：："+new Gson().toJson(bsoset.members()));
+        bsoset.union("wwww");
+        bsoset.expire(1000, TimeUnit.SECONDS);
+
+        // ------------------------------                  -------------------- ------------------------------                  --------------------
+        // 因为 有序，所以，必须有
+        redisTemplate.delete("zzzsetKey");
+        BoundZSetOperations<String, String> bzzzset = redisTemplate.boundZSetOps("zzzsetKey");
+        bzzzset.add("a",0);
+        bzzzset.add("b",1);
+        bzzzset.add("b",1);
+        bzzzset.add("eee",1); // 因为有序，所以有了分数1，如果分数已经存在，那么就会从新排序。
+        bzzzset.add("c",2);
+        bzzzset.add("d",3);
+// revrange 查询分数从高到底 ，，，，
+        System.out.println("now：range：："+new Gson().toJson(bzzzset.range(0,-1))); //["a","b","eee","c","d"]
+        bzzzset.expire(1000, TimeUnit.SECONDS);
+
+    }
+
+    @Test
+    public void zset() {
+
+
+    }
+
+}
