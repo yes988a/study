@@ -1,0 +1,50 @@
+package com.boot.demo;
+
+import com.google.gson.Gson;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.BoundListOperations;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.test.context.junit4.SpringRunner;
+
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class RedisListTests {
+
+    // 注意：注意： 测试前，清空redis内容，否则不准确。  flushall
+
+    @Autowired
+    RedisTemplate redisTemplate;
+
+    // 英语 ： （pop弹出）（push推送）（Present现在）（range范围）（index角标）（）
+    @Test
+    public void normal() {
+
+        BoundListOperations<String, String> listo = redisTemplate.boundListOps("tlist");
+        listo.leftPushAll("a ", "b", "c", " d d", "eee", "");
+
+        System.out.println(listo.index(1)); // eee   证明和list一样，角标从0开始。而且是从left开始取。
+
+        //range是否包头和尾。 包含
+        System.out.println("range是否包头和尾" + new Gson().toJson(listo.range(1, 2)));// ["eee"," d d"]
+
+        listo.leftPushIfPresent("c");
+        listo.leftPushIfPresent("kkkk");
+        System.out.println("还剩什么:::: " + new Gson().toJson(listo.toString()));  //  toString返回是Object地址，
+        System.out.println("取出来全部？？？---- " +
+                new Gson().toJson(listo.range(0, listo.size()))); //["kkkk","c","","eee"," d d","c","b","a "]
+System.out.println("第二种写法：取出来全部？？？----但是不能保证所有版本都会支持 " +
+                new Gson().toJson(listo.range(0, -1))); //["kkkk","c","","eee"," d d","c","b","a "]
+
+        System.out.println(listo.leftPop()); // kkkk
+
+        listo.trim(0, listo.size()); // 貌似没有啥用。null没有被去除，""也没有被去除，和Java中string的trim不一样呀
+
+        //还剩什么:::: ["c","","eee"," d d","c","b","a "]
+        System.out.println("还剩什么:::: " + new Gson().toJson(listo.range(0, listo.size())));
+
+    }
+
+}
