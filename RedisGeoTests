@@ -1,0 +1,142 @@
+package com.boot.demo;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.*;
+import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.*;
+import org.springframework.test.context.junit4.SpringRunner;
+
+import java.io.Serializable;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class RedisGeoTests {
+
+    // 注意：注意： 测试前，清空redis内容，否则不准确。 flushall
+
+    // 一 springboot中redis集群和多redis数据源
+    // 多数据源，就是注解覆盖默认的redisTemplate      参考：https://blog.csdn.net/lc199408/article/details/77154375/
+
+    // 二 数据操作。看中文文档。 本class仅仅列举某些常用功能。
+
+    @Autowired
+    RedisTemplate redisTemplate;
+
+    // 简单测试。是否redis正常
+    @Test
+    public void normal() {
+
+        // 方法一
+        redisTemplate.opsForValue().set("a", "aaaaaa中文aa");
+        redisTemplate.expire("a", 3000, TimeUnit.SECONDS);
+
+        //方法二   BoundValueOperations 和 ValueOperations 都可以使用。一个是提前确定好key。
+        BoundValueOperations<String, String> vvv = redisTemplate.boundValueOps("a");
+        System.out.println(vvv.get());   ///aaaaaaaa
+        redisTemplate.delete("a");
+        System.out.println(vvv.get()); /// null   。标识如果操作过程中被其他线程删除，不会报错，说明BoundValueOperations不存在脏数据问题。
+        vvv.set("bbbbbbbbb中文bb");
+        vvv.expire(3000, TimeUnit.SECONDS);
+
+        String a = String.valueOf(redisTemplate.opsForValue().get("a"));
+        System.out.println(a); // bbbbbbbbbb
+    }
+
+    // 英语：  （distance距离）（Point点）（Radius半径）（）（）（）（）（）（）
+    // 地理位置
+    @Test
+    public void geo() {
+        //https://blog.csdn.net/qq_27336239/article/details/78623095
+
+        // 添加数据：
+        BoundGeoOperations<Serializable, Object> vohenan = redisTemplate.boundGeoOps(geoKeySyf);
+        vohenan.add(new Point(11.00, 33.44), "河南");
+
+        // 添加数据：
+        BoundGeoOperations<Serializable, Object> vohebei = redisTemplate.boundGeoOps(geoKeySyf);
+        vohebei.add(new Point(11.00, 33.44), "河北");
+        vohebei.add(new Point(10.00, 30.44), "河北");
+        List<Point> hbListPoint = vohebei.position("河北"); // 返回长度为1，并且有值。
+        List<Point> beiListPoint = vohebei.position("北京");// 返回长度为1，但是没有内容。
+        System.out.println(hbListPoint.toString() + beiListPoint.toString());
+
+        GeoOperations<Serializable, Object> voOld = redisTemplate.opsForGeo();
+        voOld.add(geoKeySyf, new Point(11.00, 33.44), "北京");
+        voOld.add(geoKeySyf, new Point(11.00, 33.44), "上海");
+
+        BoundGeoOperations<Serializable, Object> geoOne = redisTemplate.boundGeoOps(geoKeySyf); // geoKeySyf 相当于地区，如中国
+        //返回两个位置之间的距离。
+        Distance dd = geoOne.distance("北京", "上海", Metrics.MILES);
+
+        System.out.println(dd);
+
+        boundGeoOperationsTest();// 测试。
+
+    }
+
+    private static String geoKeySyf = "CHINA:CITY";// 貌似分组一样的意思。如都在一个中国，然后计算他们的坐标和距离。如果没在同一个范围，找不到地区
+
+    private void boundGeoOperationsTest() {
+        BoundGeoOperations<Serializable, Object> bg = redisTemplate.boundGeoOps(geoKeySyf);
+        //南京 118.803805,32.060168
+        Point nanjing = new Point(118.803805, 32.060168);
+        //当redis里面已经存在了相同的member的时候，则仅仅更新经纬度
+        System.out.println(bg.add(nanjing, "南京"));
+        Point beijing = new Point(116.397039, 39.9077);
+        System.out.println(bg.add(beijing, "北京")); //  待验证：返回0 标识原来就有。本次操作添加了0条数据。
+
+        Distance distance = bg.distance("南京", "北京", Metrics.KILOMETERS);//geodist：获取两个地理位置的距离
+        System.out.println("南京到北京之间的距离是：" + distance.getValue() + "km");
+
+        List<String> list = bg.hash("南京"); //获取某个地理位置的hash值
+        System.out.println("南京的hash = " + list.get(0));  // 南京的hash值是不变的。
+
+        List<Point> pointList = bg.position("南京");//geopos：获取某个地理位置的坐标
+        System.out.println("南京的经纬度为 = " + pointList.get(0));
+
+        System.out.println("------================================");
+        circle(nanjing);
+        System.out.println("-----================================  ");
+        //删除位置信息,此命令不是geo提供的，是使用zrem命令删除的
+        System.out.println(bg.remove("南京"));
+        System.out.println(bg.remove("北京"));
+        System.out.println(bg.remove("上海"));
+        System.out.println(bg.remove("河北"));
+        System.out.println(bg.remove("河南"));
+    }
+
+    // 获取范围内地方。nanjing附近的城
+    private void circle(Point nanjing) {
+        BoundGeoOperations bg = redisTemplate.boundGeoOps("geoKeySyf");
+
+        Circle within = new Circle(nanjing, 1000000); //查询南京1000KM范围内的城
+
+        //设置geo查询参数
+        RedisGeoCommands.GeoRadiusCommandArgs args = RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs();
+        args = args.includeCoordinates().includeDistance();//查询返回结果包括距离和坐标
+        args.sortAscending();//按查询出的坐标距离中心坐标的距离进行排序
+        args.limit(2); //限制查询返回的数量
+
+        GeoResults<RedisGeoCommands.GeoLocation<String>> geoResults = bg.radius(within, args);
+
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> geoResultList = geoResults.getContent();
+        for (GeoResult geoResult : geoResultList) {
+            System.out.println("geoRadius  " + geoResult.getContent());
+        }
+
+        //-------------------   ------------ 和上面比较不同  ------------------------
+        System.out.println("----------------   ------------ 和上面比较不同  ");
+        args.limit(1);  //georadiusbymember：根据给定地理位置获取指定范围内的地理位置集合
+        geoResults = bg.radius("南京", new Distance(1000000), args);
+        geoResultList = geoResults.getContent();
+        for (GeoResult geoResult : geoResultList) {
+            System.out.println("geoRadiusByMember  " + geoResult.getContent());
+        }
+    }
+
+}
