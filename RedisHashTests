@@ -1,0 +1,44 @@
+package com.boot.demo;
+
+import com.boot.demo.pojo.GeoPojo;
+import com.google.gson.Gson;
+import io.netty.util.collection.IntObjectHashMap;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.BoundHashOperations;
+import org.springframework.data.redis.core.BoundValueOperations;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.util.StringUtils;
+
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class RedisHashTests {
+
+    @Autowired
+    RedisTemplate redisTemplate;
+
+    // 英语（increment增量）（）（）（）（）
+    @Test
+    public void counter() {
+        redisTemplate.delete("test");
+        BoundHashOperations<String, Integer, GeoPojo>  hash = redisTemplate.boundHashOps("test");
+        GeoPojo pojo = new GeoPojo();
+        pojo.setName("小花");
+        Integer llkey = pojo.hashCode();
+        hash.put(llkey,pojo);
+        System.out.println(new Gson().toJson(hash.entries()));
+        System.out.println(new Gson().toJson(hash.get(llkey)));
+
+        /*  计数器是个坑。不要用暂时。
+        System.out.println(new Gson().toJson(hash.get(llkey)));
+        llkey = hash.increment(llkey,3L);
+        System.out.println(llkey);
+        System.out.println(new Gson().toJson(hash.get(llkey)));
+        */
+
+    }
+
+}
