@@ -1,0 +1,105 @@
+package com.boot.demo;
+
+import org.junit.Test;
+
+import java.sql.*;
+
+public class MysqlTests {
+
+    @Test
+    public void testMysql(){
+        System.out.println("Data base connection test:");
+        String driver = "com.mysql.cj.jdbc.Driver";
+        String url = "jdbc:mysql://127.0.0.1:3306/assured?characterEncoding=utf8&useUnicode=true&useSSL=false&serverTimezone=Asia/Shanghai"; //注意，新版要求必须加上serverTimezone
+        String user = "root";
+        String password = "1396984828";
+        try {
+            Class.forName(driver);
+            Connection conn = DriverManager.getConnection(url, user, password);
+            if(true){
+                System.out.println(!conn.isClosed());
+            }
+            if (!conn.isClosed())
+                System.out.println(String.format("  ----------------  conection to %s successfully.", url));
+            //statement   执行不能使用参数的SQL
+            Statement statement = conn.createStatement();
+            ResultSet resultSet = statement.executeQuery("SELECT * FROM student WHERE  rowId<999 ");
+            ResultSetMetaData md = resultSet.getMetaData();
+            int columnCount = md.getColumnCount();
+            for (int i = 1; i <= columnCount; i++) {//注意起始数字
+                System.out.println("---------------------");
+                System.out.print(md.getColumnClassName(i) + "\t"); //java.lang.String
+                System.out.print(md.getColumnDisplaySize(i) + "\t"); //255
+                System.out.print(md.getColumnName(i) + "\t"); //name
+                System.out.print(md.getColumnType(i) + "\t"); //12
+                System.out.print(md.getColumnTypeName(i) + "\t"); //VARCHAR
+                System.out.println(md.getColumnClassName(i) + "\t"); //java.lang.String
+            }
+            while (resultSet.next()) {
+                for (int i = 1; i <= columnCount; i++) {
+                    System.out.print(resultSet.getObject(i));
+                    System.out.print("\t");
+                }
+                System.out.println();
+            }
+            statement.close();
+            // prepareStatement
+            PreparedStatement prepareStatement = conn.prepareStatement("SELECT * FROM student WHERE rowId<?");
+            prepareStatement.setInt(1, 999);//注意这里，JDBC中的ColumnIndex是从1开始的。
+            ResultSet results = prepareStatement.executeQuery();
+            while (results.next()) {
+                int rowId = results.getInt(1); //注意这里，JDBC中的ColumnIndex是从1开始的。
+                String name = results.getString(2);
+                int age = results.getInt(3);
+                System.out.println(rowId + "\t" + name + "\t" + age);
+            }
+            prepareStatement.close();
+            // insert
+            PreparedStatement insertPrepareStatement = conn.prepareStatement("INSERT  INTO student(name,age) VALUES (?,?)", Statement.RETURN_GENERATED_KEYS);
+            insertPrepareStatement.setString(1, "杨连峰");
+            insertPrepareStatement.setInt(2, 23);
+
+            if (insertPrepareStatement.executeUpdate() > 0) {
+                ResultSet gk = insertPrepareStatement.getGeneratedKeys();
+                if (gk.next())
+                    System.out.println("Insert into success. primary key rowId =" + gk.getInt("GENERATED_KEY"));
+            }
+            insertPrepareStatement.close();
+
+            //batch commit.
+            conn.setAutoCommit(false);//先停止自动提交。
+            PreparedStatement batchPrepareStatement = conn.prepareStatement("INSERT INTO student(name,age) VALUES (?,?)", Statement.RETURN_GENERATED_KEYS);
+            for (int i = 0; i < 5; i++) {
+                batchPrepareStatement.setString(1, "addBatch_" + i);
+                batchPrepareStatement.setInt(2, (30 + i));
+                batchPrepareStatement.addBatch();
+            }
+            try {
+                int[] intArrs = batchPrepareStatement.executeBatch();
+                for (int eff : intArrs) {
+                    System.out.println("eff:" + eff);
+                }
+                conn.commit();
+                batchPrepareStatement.clearBatch();//提交后，清空Batch。
+                ResultSet keys = batchPrepareStatement.getGeneratedKeys();
+                while (keys.next()) {
+                    int rowId = keys.getInt("GENERATED_KEY");
+                    System.out.println("rowId:" + rowId);
+                }
+            } catch (Exception ex) {
+                System.out.println("commit failed and will rollback:" + ex.getMessage());
+                conn.rollback();
+                ex.printStackTrace();
+            } finally {
+                batchPrepareStatement.close();
+            }
+            if (!conn.isClosed()) {
+                conn.close();
+            }
+        } catch (Exception ex) {
+            System.out.println("SQL操作异常：" + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+}
