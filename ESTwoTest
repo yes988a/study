@@ -1,0 +1,329 @@
+package com.boot.demo.es;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import org.elasticsearch.action.admin.indices.create.CreateIndexRequestBuilder;
+import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
+import org.elasticsearch.action.bulk.BulkItemResponse;
+import org.elasticsearch.action.bulk.BulkRequestBuilder;
+import org.elasticsearch.action.bulk.BulkResponse;
+import org.elasticsearch.action.delete.DeleteRequest;
+import org.elasticsearch.action.delete.DeleteResponse;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.action.search.SearchRequestBuilder;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.update.UpdateRequest;
+import org.elasticsearch.action.update.UpdateResponse;
+import org.elasticsearch.client.transport.TransportClient;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.transport.InetSocketTransportAddress;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
+import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.search.sort.SortBuilder;
+import org.elasticsearch.transport.client.PreBuiltTransportClient;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.Date;
+
+/**
+ * 第二次，完整走流程。
+ */
+public class ESTwoTest {
+
+    // 学习内容。 一、安装 elasticsearch （直接运行即可，集群另说）。
+    // 二、 安装kibana，默认可以直接访问本地elastic（如果想要远程其他库？可以直接在命令行中，应该也可以配置默认地址）。
+    // 三、 安装分词，github上面照着来即可。3.1、每次创建索引时要定义分词类型， ik分词器github上面有例子。
+    // 四、 连接elastic时，可以链接多个地址，并开启嗅觉。也可以指定es群名称
+    // 五、 Java代码创建索引并指定分词方式。  setSource添加文档  、 继续添加数据。
+    // 六、 批量插入，
+    // 六、 分词查询，
+    // 七、 删除某条数据，
+    // 八、 删除 表，
+    // 九、 删除 索引,
+    // 十、 分词是包含关系，如果没有指定那么就是上一级的默认。。。 es默认 > 自定义到index的分词  >  自定义到字段的分词       精确到字段哟。
+
+
+    /** 创建索引  。 mapping约束，setting分片设置，properties分词。   --------------      ---------------     --------------    ---------------    --------------      ---------------
+     POST /wx_index_kibana
+     {
+     "settings" : {
+     "number_of_shards" : 5,
+     "number_of_replicas" : 1
+     }
+     ,
+     "properties": {
+     "userName1": {
+     "type": "text",
+     "analyzer": "ik_max_word",
+     "search_analyzer": "ik_max_word"
+     }
+     }
+     ,
+     "mappings": {
+     "doc": {
+     "properties": {
+     "name2":     { "type": "text",
+     "analyzer": "ik_max_word",
+     "search_analyzer": "ik_max_word"
+     },
+     "age2":      { "type": "integer" },
+     "created2":  {
+     "type":   "date",
+     "format": "strict_date_optional_time||epoch_millis"
+     }
+     }
+     }
+     }
+     }
+     */
+
+    /**
+     * 创建索引  。 mapping约束，setting分片设置，properties分词。
+     *  action.auto_create_index: false 可以禁用自动创建索引
+     */
+    @Test
+    public void addIndex2() throws IOException {// Java代码中尽量不做这些操作，也不合适哟。
+
+        // 如果index和type不存在会自动j创建。关于下面的数据结构。认真看
+        IndexResponse response = client.prepareIndex("indexdfwzwgdgxvbdee", "dsdhda", "19")
+                .setSource(XContentFactory.jsonBuilder()
+                        .startObject().field("userName1", "张三1")
+                        .field("sendDate1", new Date())
+                        .field("msg1", "你好李四")
+                        .endObject()
+                ).get();
+        logger.info("索引名称:" + response.getIndex() + "\n类型:" + response.getType() + "\n文档ID:" + response.getId() + "\n当前实例状态:" + response.status());
+
+
+        // ------------- 二、创建 index并设置mapping
+
+        CreateIndexRequestBuilder  cib=client.admin().indices().prepareCreate("articlextessfzdhfh");  // 如果存在，会报错
+        XContentBuilder mapping = XContentFactory.jsonBuilder()
+                .startObject()
+                .startObject("properties") //设置之定义字段
+                .startObject("author1")
+                .field("type","text") //设置数据类型
+                .endObject()
+                .startObject("date1")
+                .field("type","date")  //设置Date类型
+                .field("format","yyyy-MM-dd HH:mm:ss") //设置Date的格式
+                .endObject()
+                .endObject()
+                .endObject();
+        cib.addMapping("content2", mapping);
+
+        CreateIndexResponse res=cib.execute().actionGet();
+
+        System.out.println("----------添加映射成功----------" + new Gson().toJson(res));
+
+    }
+
+// -----------
+    /** 创建type，，，，，，，type不需要创建，添加数据时指定type即可。
+     * 它 受到  index的mapping约束。和setting约束，和properties中的分词约束(可单独只当分词和字段？)
+     */
+
+
+    /** 批量  --------------      ---------------     --------------    ---------------    --------------      ---------------
+     */
+
+    /**
+     * 更新  和  新增   索引库数据
+     *
+     * @return void
+     * @Title: updateData
+     * @author sunt
+     * @date 2017年11月23日
+     */
+    @Test
+    public void updateData() {
+        JsonObject jsonObject = new JsonObject();
+
+        jsonObject.addProperty("userName", "王五。新增");
+        jsonObject.addProperty("sendDate", "2008-08-07");
+        jsonObject.addProperty("msg", "你好,张三，好久不见。新增");
+
+        IndexResponse responseInsert = client.prepareIndex("msg", "tweet", "13")
+                .setSource(jsonObject.toString(), XContentType.JSON).get();
+
+        logger.info("responseInsert索引名称:" + responseInsert.getIndex() + "\n responseInsert类型:" + responseInsert.getType()
+                + "\n responseInsert文档ID:" + responseInsert.getId() + "\n当前实例responseInsert状态:" + responseInsert.status());
+
+        jsonObject.addProperty("userName", "王五。更新");
+        jsonObject.addProperty("sendDate", "2008-08-08");
+        jsonObject.addProperty("msg", "你好,张三，好久不见。更新");
+
+        UpdateResponse updateResponse = client.prepareUpdate("msg", "tweet", "13")
+                .setDoc(jsonObject.toString(), XContentType.JSON).get();
+
+        logger.info("updateResponse索引名称:" + updateResponse.getIndex() + "\n updateResponse类型:" + updateResponse.getType()
+                + "\n updateResponse文档ID:" + updateResponse.getId() + "\n当前实例updateResponse状态:" + updateResponse.status());
+    }
+
+    /**
+     * 通过prepareBulk执行批处理
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testBulk() throws IOException {
+        //1:生成bulk
+        BulkRequestBuilder bulk = client.prepareBulk();
+
+        String bulkIndex = "bulkIndex";
+        String bulkType = "bulkType";
+
+        //2:新增
+        IndexRequest add = new IndexRequest(bulkIndex, bulkType, "10");
+        add.source(XContentFactory.jsonBuilder()
+                .startObject()
+                .field("name", "Henrry").field("age", 30)
+                .endObject());
+
+        //3:删除
+        DeleteRequest del = new DeleteRequest(bulkIndex, bulkType, "1");
+
+        //4:修改
+        XContentBuilder source = XContentFactory.jsonBuilder().startObject().field("name", "jack_1").field("age", 19).endObject();
+        UpdateRequest update = new UpdateRequest(bulkIndex, bulkType, "2");
+        update.doc(source);
+
+        bulk.add(del);
+        bulk.add(add);
+        bulk.add(update);
+        //5:执行批处理
+        BulkResponse bulkResponse = bulk.get();
+        if (bulkResponse.hasFailures()) {
+            BulkItemResponse[] items = bulkResponse.getItems();
+            for (BulkItemResponse item : items) {
+                System.out.println(item.getFailureMessage());
+            }
+        } else {
+            System.out.println("全部执行成功！");
+        }
+    }
+
+
+    /**
+     * 删除记录
+     *
+     * @param index ES index名称
+     * @param type  ES type名称
+     * @param id    记录ID
+     * @return 删除响应结果
+     */
+    public DeleteResponse remove(String index, String type, String id) {
+        try {
+            return client.prepareDelete(index, type, id).execute().get();
+        } catch (Exception ex) {
+            System.out.println("remove！ err");
+        }
+        return null;
+    }
+
+    /**
+     * 搜索记录
+     *
+     * @param index        ES index名称
+     * @param type         ES type名称
+     * @param from         页索引,从0开始
+     * @param count        也大小
+     * @param fields       返回的字段列表
+     * @param queryBuilder 查询条件
+     * @param sortBuilders 排序条件
+     * @return 搜索响应结果
+     */
+    public SearchResponse search(String index, String type, int from, int count, String[] fields, QueryBuilder queryBuilder, SortBuilder... sortBuilders) {
+        SearchRequestBuilder builder = client.prepareSearch()
+                .setIndices(index)
+                .setTypes(type)
+                .setQuery(queryBuilder)
+                .setFrom(from)
+                .setSize(count);
+
+        if (fields == null) {
+            //无返回字段（由于_id是内置的，故_id是始终返回的）
+            builder.storedFields();
+        } else if (fields.length == 0) {
+            //返回所有的字段
+        } else {
+            //返回特定的字段
+            builder.storedFields(fields);
+        }
+
+        if (sortBuilders != null) {
+            for (SortBuilder sortBuilder : sortBuilders) {
+                builder.addSort(sortBuilder);
+            }
+        }
+        try {
+            return builder.execute().get();
+        } catch (Exception ex) {
+            System.out.println("search！ err");
+        }
+        return null;
+    }
+
+
+//////////////////////////////////////    客户端连接，不需要关心     //////////////////////////////////////////////////
+
+    /**
+     * 获取客户端连接信息
+     *
+     * @return void
+     * @throws UnknownHostException
+     * @Title: getConnect
+     * @author sunt
+     * @date 2017年11月23日
+     */
+    @SuppressWarnings({"resource", "unchecked"})
+    @Before
+    public void getConnect() throws UnknownHostException {
+        try {
+            //1.设置集群名称
+//            Settings settings = Settings.builder().put("cluster.name", "elasticsearch").build();
+            //2.创建client
+            client = new PreBuiltTransportClient(Settings.EMPTY)
+                    .addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName("127.0.0.1"), 9300));
+
+        } catch (Exception ex) {
+            closeConnect();
+        } finally {
+        }
+    }
+
+    /**
+     * 关闭连接
+     *
+     * @return void
+     * @Title: closeConnect
+     * @author sunt
+     * @date 2017年11月23日
+     */
+    @After
+    public void closeConnect() {
+        if (null != client) {
+            logger.info("执行关闭连接操作...");
+            client.close();
+        }
+    }
+
+    private Logger logger = LoggerFactory.getLogger(ESTest.class);
+
+    public final static String HOST = "localhost";
+
+    public final static int PORT = 9300; //http请求的端口是9200，客户端是9300
+
+    private TransportClient client = null;
+
+}
