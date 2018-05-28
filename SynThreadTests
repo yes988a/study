@@ -1,0 +1,85 @@
+package com.boot.demo;
+
+import com.boot.demo.pojo.TestCallable;
+import com.boot.demo.pojo.TestRunnable;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.web.context.request.async.DeferredResult;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+import java.util.logging.Logger;
+
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class SynThreadTests {
+    private static Logger log = Logger.getLogger(SynThreadTests.class.getSimpleName());
+
+    // 异步：
+    // 一、Callable   Runnable  异步操作的实际事件定义类。 Callable有返回值，Runnable无返回值。
+    // 二、如果不用线程池管理Callable和Runnable。怎么运行？
+    //      2.1、new Callable<String>() {}  callable.call()，开始运行。
+    //      2.2、new Thread(new MyRunnable("Runnable1")).start();，开始运行。
+    // 三、DeferredResult  spring的异步http请求，servlet释放，等耗时操作执行完才会返回http结果。
+    //      3.1、因为是HTTP特殊场景，所以onTimeout、onError、onCompletion在单元测试中都不打印结果。
+    // 四、ExecutorService  线程池管理。  优点？ 缺点？
+
+    @Test
+    public void testCallable() throws Exception { // 异步线程。和返回值。
+
+        log.info("主线程开始！");
+        Callable<String> result = new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                log.info("副线程开始！");
+                Thread.sleep(1000);
+                log.info("副线程结束！");
+                return "SUCCESS String";
+            }
+
+        };
+
+        log.info("--------。。。。" + result.call()); //调用 call时副线程才开始执行。
+        log.info("主线程结束！");
+        log.info("=-，，，，，，，，，，" + result.call());
+    }
+
+    @Test
+    public void testDeferred(){ // 异步线程。和返回值。
+        DeferredResult<String> deferredResult = new DeferredResult<String>(2000L);
+        log.info("/asynctask 调用！thread id is : " + Thread.currentThread().getId());
+//   ------------start--------  可以在这里做其他耗时异步操作
+        ExecutorService executorService = Executors.newCachedThreadPool();
+        executorService.execute(new TestRunnable());
+        executorService.submit(new TestCallable(""));
+//   ------------end--------  可以在这里做其他耗时异步操作
+
+        //耗时操作
+        deferredResult.onTimeout(new Runnable() {
+            @Override
+            public void run() {
+                // 所有方法中都没有返回值，因为，是springHttp特有操作，所以单元测试没有返回。
+                log.info("异步调用执行超时！thread id is : " + Thread.currentThread().getId());
+                deferredResult.setResult("我是返回结果呀");
+            }
+        });
+        deferredResult.onError(new Consumer<Throwable>() {
+            @Override
+            public void accept(Throwable throwable) {
+                log.info("错误！thread id is : " + Thread.currentThread().getId());
+            }
+        });
+        deferredResult.onCompletion(new Runnable() {
+            @Override
+            public void run() {
+                log.info("完成！thread id is : " + Thread.currentThread().getId());
+            }
+        });
+        log.info("主线程结束！");
+        log.info("22222222222" + deferredResult.getResult());
+    }
+}
