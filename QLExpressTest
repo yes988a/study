@@ -1,0 +1,162 @@
+package com;
+
+import com.ql.LoveOperator;
+import com.ql.Ttt;
+import com.ql.UserInfo;
+import com.ql.util.express.DefaultContext;
+import com.ql.util.express.ExpressRunner;
+import com.ql.util.express.IExpressContext;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class Main {
+
+    public static ExpressRunner runner = null;
+
+    public static void main(String[] args) throws Exception {
+
+        Ttt t = new Ttt();
+        System.out.println("你好！" + t.mine());
+
+        runner = new ExpressRunner();   // 执行者。
+        DefaultContext<String, Object> context = new DefaultContext<String, Object>();
+        context.put("a", 1);
+        context.put("b", 2);
+        context.put("c", 3);
+        String express = "a+b*c";
+        Object ob = runner.execute(express, context, null, true, false);   //  测试 基本运算符
+        System.out.println(String.valueOf(ob) + "-----------    -------  自定义");
+
+        // ------------         =============================================              ---------------------------
+
+
+        runner.addOperator("love", new LoveOperator("love"));
+        //则执行：'a' love 'b' love 'c' love 'd' = "d{c{b{a}b}c}d"
+        Main demo = new Main();
+        demo.testRunner();
+
+        // -- 宏
+        runner.addMacro("计算平均成绩", "(语文+数学+英语)/3.0");   // addMacro执行
+        runner.addMacro("是否优秀", "计算平均成绩>90");
+
+        IExpressContext<String, Object> context22 = new DefaultContext<String, Object>();
+        context.put("语文", 88);
+        context.put("数学", 99);
+        context.put("英语", 95);
+        Object result = runner.execute("是否优秀", context22, null, false, false);  // execute 执行。 比较复杂，自定义的。      addMacro
+        System.out.println(String.valueOf(result));
+//返回结果true
+
+        /* function定义
+
+        //通过name获取function的定义
+        OperatorBase getFunciton(String name);
+
+//通过自定义的Operator来实现类似：fun(a,b,c)
+        void addFunction(String name, OperatorBase op);
+//fun(a,b,c) 绑定 object.function(a,b,c)对象方法
+        void addFunctionOfServiceMethod(String name, Object aServiceObject,
+                String aFunctionName, Class<?>[] aParameterClassTypes,
+                String errorInfo);
+//fun(a,b,c) 绑定 Class.function(a,b,c)类方法
+        void addFunctionOfClassMethod(String name, String aClassName,
+                String aFunctionName, Class<?>[] aParameterClassTypes,
+                String errorInfo);
+//给Class增加或者替换method，同时 支持a.fun(b) ，fun(a,b) 两种方法调用
+//比如扩展String.class的isBlank方法:“abc”.isBlank()和isBlank("abc")都可以调用
+        void addFunctionAndClassMethod(String name,Class<?>bindingClass, OperatorBase op);
+
+        */
+
+    }
+
+    public void testRunner() throws Exception {
+        System.out.println("------- ------- ------- ------- start  >>>>    -----------------");
+        this.initial();
+        System.out.println(this.hasPermission(new UserInfo(100, "xuannan", 7), "诺基亚卖家   而且   已经开店"));
+        System.out.println("------- ------- ------- ------- ------- 1    -----------------");
+        System.out.println(this.hasPermission(new UserInfo(101, "qianghui", 8), "诺基亚卖家   而且   已经开店"));
+        System.out.println("------- ------- ------- ------- 2    -----------------");
+        System.out.println(this.hasPermission(new UserInfo(100, "张三", 8), "诺基亚卖家 and 已经开店"));
+        System.out.println("------- ------- ------- ------- 3    -----------------");
+        System.out.println(this.hasPermission(new UserInfo(100, "李四", 7), "诺基亚卖家 and 已经开店"));
+        System.out.println("------- ------- ------- ------- end  <<<<    -----------------");
+
+    }
+
+    // 初始化语句执行器。结果处理
+    public void initial() throws Exception {
+
+        runner = new ExpressRunner();
+        runner.addOperatorWithAlias("而且", "and", null);                     // 关键字转换。
+
+        runner.addFunctionOfClassMethod("userTagJudge", Main.class.getName(), "userTagJudge",
+                new String[]{UserInfo.class.getName(), "int"}, "你不是诺基亚卖家");                             // 反射，操作定义的function。判断正确性,,,仅仅定义，不具体操作
+
+        runner.addFunctionOfClassMethod("hasOrderGoods", Main.class.getName(), "hasOrderGoods",
+                new String[]{UserInfo.class.getName(), "long"}, "你没有开通淘宝店铺");                         // 反射，操作定义的function。判断正确性,,,仅仅定义，不具体操作
+
+
+        runner.addMacro("诺基亚卖家", "userTagJudge(userInfo,3)");                   //3表示诺基亚卖家的标志位,,,具体操作赋值
+        runner.addMacro("已经开店", "hasOrderGoods(userInfo,100)");                             //100表示旺铺商品的ID,,,具体操作赋值
+
+    }
+
+
+    /**
+     * 判断逻辑执行函数
+     *
+     * @param userInfo
+     * @param expression
+     * @return
+     * @throws Exception
+     */
+    public String hasPermission(UserInfo userInfo, String expression) throws Exception {
+        IExpressContext<String, Object> expressContext = new DefaultContext<String, Object>();
+        expressContext.put("userInfo", userInfo);
+        List<String> errorInfo = new ArrayList<String>();
+        Boolean result = (Boolean) runner.execute(expression, expressContext, errorInfo, true, false);
+        String resultStr = "";
+        if (result.booleanValue() == true) {
+            resultStr = "可以订购此商品";
+        } else {
+            for (int i = 0; i < errorInfo.size(); i++) {
+                if (i > 0) {
+                    resultStr = resultStr + ",";
+                }
+                resultStr = resultStr + errorInfo.get(i);
+            }
+            resultStr = resultStr + ",所以不能订购此商品";
+        }
+        return "亲爱的" + userInfo.getName() + " : " + resultStr;
+    }
+
+    /**
+     * 判断一个用户TAG的第X位是否为1。这个的demo,其实现合理性不考虑
+     *
+     * @param user
+     * @param tagBitIndex
+     * @return
+     */
+    public boolean userTagJudge(UserInfo user, int tagBitIndex) {
+        boolean r = (user.getUserTag() & ((long) Math.pow(2, tagBitIndex))) > 0;
+        return r;
+    }
+
+    /**
+     * 判断一个用户是否订购过某个商品
+     *
+     * @param user
+     * @param goodsId
+     * @return
+     */
+    public boolean hasOrderGoods(UserInfo user, long goodsId) {
+        //随机模拟一个
+        if (user.getUserId() % 2 == 1) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
